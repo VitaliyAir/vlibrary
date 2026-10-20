@@ -1,0 +1,11 @@
+# Build context of VLibrary.Api/Dockerfile (the solution folder): only the API projects are needed.
+**/bin/
+**/obj/
+**/logs/
+**/node_modules/
+.vs/
+.git/
+tests/
+VLibrary.UIReact/
+*.png
+*.pdf
