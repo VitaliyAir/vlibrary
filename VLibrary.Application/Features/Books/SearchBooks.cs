@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using VLibrary.Application.Abstractions;
 using VLibrary.Application.Common;
 using VLibrary.Application.Features.Categories;
-using VLibrary.Application.Features.Classifiers;
 using VLibrary.Domain.Common;
 using VLibrary.Domain.Enums;
 using VLibrary.Domain.Rules;
@@ -16,7 +15,6 @@ namespace VLibrary.Application.Features.Books
     /// </summary>
     /// <param name="Q">Free text: title, authors, ISBN, tags and note text.</param>
     /// <param name="OnShelf">"На полках": the book is on at least one shelf.</param>
-    /// <param name="ClassifierId">Includes the classifier's sub-classifiers.</param>
     public sealed record SearchBooksQuery(
         string? Q = null,
         long? ShelfId = null,
@@ -25,7 +23,6 @@ namespace VLibrary.Application.Features.Books
         string? Tag = null,
         FileTypesEnum? Format = null,
         int? MinRating = null,
-        long? ClassifierId = null,
         long? AuthorId = null,
         long? CategoryId = null,
         BookSort Sort = BookSort.Title,
@@ -96,12 +93,6 @@ namespace VLibrary.Application.Features.Books
                 // The category and its subcategories.
                 var categoryIds = await CategoryTree.SubtreeIdsAsync(db, request.CategoryId.Value, cancellationToken);
                 query = query.Where(b => b.FilesMetas.Any(f => categoryIds.Contains(f.CategoryId)));
-            }
-
-            if (request.ClassifierId.HasValue)
-            {
-                var classifierIds = await ClassifierTree.SubtreeIdsAsync(db, request.ClassifierId.Value, cancellationToken);
-                query = query.Where(b => b.BookClasificatorId.HasValue && classifierIds.Contains(b.BookClasificatorId.Value));
             }
 
             var total = await query.CountAsync(cancellationToken);

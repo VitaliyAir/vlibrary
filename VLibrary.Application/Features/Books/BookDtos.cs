@@ -16,6 +16,9 @@ namespace VLibrary.Application.Features.Books
 
     public sealed record NamedRefDto(long Id, string Name);
 
+    /// <summary>An author of a book with the name parts (the author rows of the book card).</summary>
+    public sealed record BookAuthorDto(long Id, string Name, string? LastName, string? FirstName, string? MiddleName, string? Initials);
+
     public sealed record BookListItemDto(
         long Id,
         string Title,
@@ -50,8 +53,7 @@ namespace VLibrary.Application.Features.Books
         DateTime? LastOpenedAt,
         DateTime CreatedAt,
         DateTime UpdatedAt,
-        NamedRefDto? Classifier,
-        IReadOnlyList<NamedRefDto> Authors,
+        IReadOnlyList<BookAuthorDto> Authors,
         IReadOnlyList<NamedRefDto> Tags,
         IReadOnlyList<BookFileDto> Files,
         IReadOnlyList<NamedRefDto> Shelves,

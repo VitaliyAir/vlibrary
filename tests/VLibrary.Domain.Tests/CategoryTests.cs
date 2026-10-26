@@ -47,6 +47,57 @@ namespace VLibrary.Domain.Tests
         }
 
         [Fact]
+        public void Relocate_RenamesAndMoves_ChildrenFollowWithMoveUnder()
+        {
+            var library = CategoryEntity.CreateTopLevel("Library").Value;
+            var science = library.CreateChild("Science").Value;
+            var physcs = library.CreateChild("Physcs").Value;
+            var classic = physcs.CreateChild("Classic").Value;
+
+            physcs.Relocate(science, " Physics ").IsSuccess.Should().BeTrue();
+            classic.MoveUnder(physcs).IsSuccess.Should().BeTrue();
+
+            physcs.Path.Should().Be("Library/Science/Physics");
+            physcs.HasName("physics").Should().BeTrue();
+            classic.Path.Should().Be("Library/Science/Physics/Classic");
+        }
+
+        [Fact]
+        public void Relocate_RejectsAnInvalidName() =>
+            CategoryEntity.CreateTopLevel("A").Value.Relocate(null, "a/b").IsFailure.Should().BeTrue();
+
+        [Fact]
+        public void LeaveRedirect_KeepsTheOldNameAndPlace_AndRestoreMakesItLive()
+        {
+            var library = CategoryEntity.CreateTopLevel("Library").Value;
+            var physcs = library.CreateChild("Physcs").Value;
+
+            var redirect = physcs.LeaveRedirect(CategoryRedirect.Renamed);
+            physcs.Relocate(library, "Physics");
+
+            redirect.Path.Should().Be("Library/Physcs");
+            redirect.IsRedirect.Should().BeTrue();
+            redirect.RedirectTo.Should().BeSameAs(physcs);
+            physcs.Path.Should().Be("Library/Physics");
+
+            redirect.Restore();
+            redirect.IsRedirect.Should().BeFalse();
+            redirect.RedirectTo.Should().BeNull();
+        }
+
+        [Fact]
+        public void PlaceIn_TakesTheCategoryPathIntoTheKey()
+        {
+            var category = CategoryEntity.CreateTopLevel("Library").Value;
+            var file = FileMetaEntity.Create(category, "a.pdf", 1, Now, Hash, Guid.NewGuid(), Now);
+
+            category.Relocate(null, "Books");
+            file.PlaceIn(category);
+
+            file.StorageKey.Should().Be("Books/a.pdf");
+        }
+
+        [Fact]
         public void FileMeta_StorageKey_IsCategoryPathAndFileName()
         {
             var math = CategoryEntity.CreateTopLevel("Library").Value.CreateChild("Math").Value;
@@ -97,6 +148,34 @@ namespace VLibrary.Domain.Tests
             file.BookId.Should().BeNull();
             file.IsPrimary.Should().BeFalse();
         }
+
+        [Fact]
+        public void Rename_KeepsTheExtension_AndRemembersTheOriginalName_RenamingBackForgetsIt()
+        {
+            var file = FileMetaEntity.Create(CategoryEntity.CreateTopLevel("Sky").Value, "TT_22AA.PDF", 1, Now, Hash, Guid.NewGuid(), Now);
+
+            file.Rename(" Astronomy ").IsSuccess.Should().BeTrue();
+
+            file.FileName.Should().Be("Astronomy.PDF");
+            file.StorageKey.Should().Be("Sky/Astronomy.PDF");
+            file.OriginalFileName.Should().Be("TT_22AA.PDF");
+
+            file.Rename("Sky");
+            file.OriginalFileName.Should().Be("TT_22AA.PDF");
+
+            file.Rename("TT_22AA");
+            file.OriginalFileName.Should().BeNull();
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("a/b")]
+        [InlineData("a:b")]
+        [InlineData("what?")]
+        [InlineData("dot.")]
+        public void Rename_RejectsAnInvalidName(string name) =>
+            FileMetaEntity.Create(CategoryEntity.CreateTopLevel("Sky").Value, "a.pdf", 1, Now, Hash, Guid.NewGuid(), Now)
+                .Rename(name).IsFailure.Should().BeTrue();
 
         private static FileMetaEntity NewFile(BookEntity book, string fileName)
         {

@@ -75,6 +75,38 @@ namespace VLibrary.Api.IntegrationTests
             return Task.FromResult(Result.Success());
         }
 
+        public Task<Result<StorageRenameResult>> RenameAsync(IReadOnlyList<StorageRename> renames, CancellationToken cancellationToken)
+        {
+            if (Unavailable)
+            {
+                return Task.FromResult<Result<StorageRenameResult>>(StorageErrors.Unavailable);
+            }
+
+            // A new key must not belong to another object (all or nothing).
+            var ids = renames.Select(r => r.ObjectId).ToHashSet();
+            if (renames.Any(r => _objects.Any(o => !ids.Contains(o.Key) && o.Value.Key == r.Key)))
+            {
+                return Task.FromResult<Result<StorageRenameResult>>(StorageErrors.RenameConflict);
+            }
+
+            var renamed = 0;
+            var missing = new List<Guid>();
+            foreach (var rename in renames)
+            {
+                if (!_objects.TryGetValue(rename.ObjectId, out var stored))
+                {
+                    missing.Add(rename.ObjectId);
+                }
+                else if (stored.Key != rename.Key)
+                {
+                    _objects[rename.ObjectId] = (rename.Key, stored.Sha256, stored.Data);
+                    renamed++;
+                }
+            }
+
+            return Task.FromResult<Result<StorageRenameResult>>(new StorageRenameResult(renamed, missing));
+        }
+
         public Task<Result<StorageDownloadLink>> CreateDownloadLinkAsync(Guid objectId, CancellationToken cancellationToken) =>
             Task.FromResult<Result<StorageDownloadLink>>(_objects.ContainsKey(objectId)
                 ? new StorageDownloadLink($"https://storage.test/d/{objectId:N}", DateTimeOffset.UtcNow.AddMinutes(5))

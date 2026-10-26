@@ -65,6 +65,7 @@ namespace VLibrary.Application.Features.Books
 
             if (author != null)
             {
+                author.Complete(name);
                 return author;
             }
 

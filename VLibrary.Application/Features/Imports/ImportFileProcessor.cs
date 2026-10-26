@@ -16,6 +16,7 @@ namespace VLibrary.Application.Features.Imports
     /// Imports one uploaded file (UC-1) into VStorage + the catalog. Per file:
     /// <list type="number">
     /// <item>same category + file name, same content -> unchanged (counted)</item>
+    /// <item>same category + original name of a file renamed in the library, same content -> unchanged</item>
     /// <item>same category + file name, other content -> Conflict, skipped</item>
     /// <item>same content elsewhere in the library -> AlreadyInLibrary, skipped (not uploaded)</item>
     /// <item>same content as a deleted book / removed file -> DeletedDuplicateSkipped (reported once)</item>
@@ -50,12 +51,19 @@ namespace VLibrary.Application.Features.Imports
             }
 
             var path = parsed.Value;
-            var categoryPath = path.CategoryPath(batch.ParentCategory?.Path);
+            // Old folder names of renamed / moved categories lead to the current place, also in the VStorage key.
+            var categoryPath = await categories.PathOfAsync(batch.ParentCategory, path.Folders, cancellationToken);
             var key = categoryPath.Length == 0 ? path.FileName : FileMetaEntity.StorageKeyFor(categoryPath, path.FileName);
             var rejected = Reject(path, categoryPath, key, command.RelativePath);
             if (rejected != null)
             {
                 return await DoneAsync(batch, key, ImportOutcome.Failed, rejected, null);
+            }
+
+            // Already reported by this import (imported, conflict, ... before it was stopped and continued): not counted again.
+            if (await db.ImportItems.AnyAsync(i => i.ImportBatchId == batch.Id && i.Path == key, cancellationToken))
+            {
+                return new ImportFileResultDto(key, null, "Already handled by this import.", null, null, ImportBatchDto.From(batch));
             }
 
             var stagedResult = await staging.StageAsync(command.Content, path.FileName, cancellationToken);
@@ -75,6 +83,18 @@ namespace VLibrary.Application.Features.Imports
                 if (byKey != null)
                 {
                     return await HandleKnownKeyAsync(batch, key, byKey, staged, lastWriteTime, now);
+                }
+
+                // A file renamed in the library, imported again under its original name: the same content is unchanged.
+                var byOriginalName = await db.FileMetas
+                    .FirstOrDefaultAsync(
+                        f => f.CategoryId == category.Id && f.OriginalFileName == path.FileName && f.FileHash == staged.Sha256,
+                        cancellationToken);
+                if (byOriginalName != null)
+                {
+                    byOriginalName.Touch(staged.SizeBytes, lastWriteTime, now);
+                    batch.RecordUnchanged();
+                    return await DoneAsync(batch, key, null, null, byOriginalName);
                 }
             }
 
@@ -167,6 +187,7 @@ namespace VLibrary.Application.Features.Imports
             }
 
             var category = await categories.GetOrCreateAsync(batch.ParentCategory, path.Folders, cancellationToken);
+            var restored = RestoredMessage(categories.Restored);
             var file = FileMetaEntity.Create(
                 category, path.FileName, staged.SizeBytes, lastWriteTime, staged.Sha256, uploaded.Value.ObjectId, now);
             file.ExtractedMetadata = metadata;
@@ -194,7 +215,7 @@ namespace VLibrary.Application.Features.Imports
             var matches = DuplicateMatcher.Match(candidates);
 
             ImportOutcome outcome;
-            string? message = null;
+            string? message = restored;
             if (matches.Count == 0)
             {
                 file.Book = await bookCreator.CreateAsync(metadata, fileNameTitle, cancellationToken);
@@ -215,7 +236,7 @@ namespace VLibrary.Application.Features.Imports
                 }
 
                 outcome = ImportOutcome.PendingReview;
-                message = $"{matches.Count} possible match(es) with existing books.";
+                message = $"{matches.Count} possible match(es) with existing books." + (restored != null ? " " + restored : "");
             }
 
             try
@@ -262,6 +283,19 @@ namespace VLibrary.Application.Features.Imports
             tombstone.Book is { IsDeleted: true } book
                 ? $"Same content as deleted book «{book.Title}» (#{book.Id}): skipped."
                 : $"Same content as a file removed from the library ({tombstone.StorageKey}): skipped.";
+
+        private static string? RestoredMessage(List<string> restored)
+        {
+            if (restored.Count == 0)
+            {
+                return null;
+            }
+
+            var message = $"The category '{string.Join("', '", restored)}' was renamed or moved and its new category was " +
+                          "deleted later; it was created again.";
+            restored.Clear();
+            return message;
+        }
 
         private static string? Reject(ImportPath path, string categoryPath, string key, string relativePath)
         {

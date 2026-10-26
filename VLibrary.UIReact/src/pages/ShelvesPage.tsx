@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { useShelf, useShelfMutations, useShelves } from '../api/hooks';
 import type { Shelf } from '../api/types';
 import { Empty, ErrorMessage, Loading, StatusBadge } from '../components/common';
+import { Cover } from '../components/Cover';
 
 function move<T>(items: T[], index: number, delta: number): T[] {
   const target = index + delta;
@@ -100,6 +101,9 @@ function ShelfDetails({ shelf, onDeleted }: { shelf: Shelf; onDeleted: () => voi
       <ol className="shelf-books">
         {books.map((book, index) => (
           <li key={book.id}>
+            <Link to={`/books/${book.id}`} tabIndex={-1}>
+              <Cover cover={book.cover} title={book.title} format={book.files[0]?.format} size="small" />
+            </Link>
             <Link to={`/books/${book.id}`}>{book.title}</Link>
             <span className="muted"> {book.authors.join(', ')}</span> <StatusBadge status={book.readingStatus} />
             <span className="row">

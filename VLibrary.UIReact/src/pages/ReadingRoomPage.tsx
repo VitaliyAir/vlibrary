@@ -8,7 +8,7 @@ import { OpenFileButton } from '../components/OpenFileButton';
 import { NoteForm } from '../components/NoteForm';
 import { filesStateInfo } from '../format';
 
-/** UC-5: book lists; a book is opened by its file path. UC-6: quick note while reading. */
+/** UC-5: recently opened books and books in progress; a book is opened by its file path. UC-6: quick note while reading. */
 export function ReadingRoomPage() {
   const room = useReadingRoom();
 
@@ -20,19 +20,16 @@ export function ReadingRoomPage() {
       <h1>Reading room</h1>
       <Shelf title="Recently opened" books={room.data.recentlyOpened} empty="Open a book from its file link to see it here." />
       <Shelf title="In progress" books={room.data.inProgress} empty="No books in progress." />
-      {room.data.shelves.map((shelf) => (
-        <Shelf key={shelf.id} title={shelf.name} books={shelf.books} more={shelf.booksCount - shelf.books.length} shelfId={shelf.id} />
-      ))}
     </section>
   );
 }
 
-function Shelf({ title, books, empty, more = 0, shelfId }: { title: string; books: BookListItem[]; empty?: string; more?: number; shelfId?: number }) {
+function Shelf({ title, books, empty }: { title: string; books: BookListItem[]; empty: string }) {
   return (
     <div className="room-shelf">
       <h2>{title}</h2>
       {books.length === 0 ? (
-        <Empty>{empty ?? 'Empty shelf.'}</Empty>
+        <Empty>{empty}</Empty>
       ) : (
         <div className="room-books">
           {books.map((book) => (
@@ -40,7 +37,6 @@ function Shelf({ title, books, empty, more = 0, shelfId }: { title: string; book
           ))}
         </div>
       )}
-      {more > 0 && shelfId && <Link to={`/?shelfId=${shelfId}`}>+{more} more…</Link>}
     </div>
   );
 }

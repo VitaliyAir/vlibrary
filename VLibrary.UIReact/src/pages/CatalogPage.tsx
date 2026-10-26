@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { useBooks, useCategories, useClassifiers, useShelves, type BookSearch } from '../api/hooks';
+import { useBooks, useCategories, useShelves, type BookSearch } from '../api/hooks';
 import { fileFormats, readingStatuses, type BookSort, type FileFormat, type ReadingStatus } from '../api/types';
 import { BookGrid } from '../components/BookGrid';
 import { BookList } from '../components/BookList';
 import { CategoryBreadcrumb, CategoryTree, categoryTrail } from '../components/CategoryTree';
 import { ErrorMessage, Loading, Pagination } from '../components/common';
-import { flattenClassifiers, statusLabels } from '../format';
+import { statusLabels } from '../format';
 
 type CatalogView = 'list' | 'grid';
 const ViewKey = 'vlibrary.catalogView';
@@ -51,7 +51,6 @@ export function CatalogPage() {
     tag: params.get('tag') ?? undefined,
     format: (params.get('format') as FileFormat) || undefined,
     minRating: number('minRating'),
-    classifierId: number('classifierId'),
     authorId: number('authorId'),
     categoryId: number('categoryId'),
     sort: (params.get('sort') as BookSort) || 'Title',
@@ -61,7 +60,6 @@ export function CatalogPage() {
 
   const books = useBooks(search);
   const shelves = useShelves();
-  const classifiers = useClassifiers();
   const categories = useCategories();
 
   const update = (key: string, value: string | undefined) => {
@@ -146,14 +144,6 @@ export function CatalogPage() {
               <input type="checkbox" checked={search.onShelf === true} onChange={(e) => update('onShelf', e.target.checked ? 'true' : undefined)} />
               On shelves
             </label>
-            <select value={search.classifierId ?? ''} onChange={(e) => update('classifierId', e.target.value)} aria-label="Classification">
-              <option value="">Any classification</option>
-              {flattenClassifiers(classifiers.data ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
             <select value={search.format ?? ''} onChange={(e) => update('format', e.target.value)} aria-label="Format">
               <option value="">Any format</option>
               {fileFormats.map((f) => (

@@ -11,6 +11,8 @@ namespace VLibrary.Api.Endpoints
 {
     public sealed record ReviewRequest(ReviewAnswer Answer);
 
+    public sealed record RenameFileRequest(string Name, bool UseAsTitle);
+
     /// <summary>Files, reading room, notes, reminders and settings (UC-5, UC-6, UC-8).</summary>
     public static class ReadingEndpoints
     {
@@ -27,6 +29,20 @@ namespace VLibrary.Api.Endpoints
             files.MapPost("/{id:long}/opened", async (long id, ISender sender, CancellationToken ct) =>
                     (await sender.Send(new MarkFileOpenedCommand(id), ct)).ToHttp())
                 .WithSummary("UC-5: open a file: returns a short-lived VStorage link and records the open.");
+
+            files.MapGet("/{id:long}/content", async (long id, ISender sender, CancellationToken ct) =>
+                {
+                    var content = await sender.Send(new OpenFileContentQuery(id), ct);
+                    return content.IsSuccess
+                        ? Results.Stream(content.Value.Content, "application/octet-stream", content.Value.FileName)
+                        : content.Error.ToProblem();
+                })
+                .WithSummary("The file content, streamed from VStorage (used by the backup). 503 when VStorage is unavailable.");
+
+            files.MapPut("/{id:long}/name", async (long id, RenameFileRequest request, ISender sender, CancellationToken ct) =>
+                    (await sender.Send(new RenameFileCommand(id, request.Name, request.UseAsTitle), ct)).ToHttp())
+                .WithSummary("Rename a file (name without extension; the extension stays) in VLibrary and VStorage. The original " +
+                             "name is remembered for imports. 409 = name taken in the category, 503 = VStorage unavailable.");
 
             api.MapGet("/reading-room", async (int? booksPerList, ISender sender, CancellationToken ct) =>
                     (await sender.Send(new GetReadingRoomQuery(booksPerList ?? 12), ct)).ToHttp())

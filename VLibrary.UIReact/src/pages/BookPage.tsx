@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useBook, useBookMutations, useBookNotes, useCategories, useCreateBook, useNoteMutations, useShelves } from '../api/hooks';
 import { readingStatuses, type BookDetails, type BookFile, type Note, type ReadingStatus } from '../api/types';
-import { BookForm } from '../components/BookForm';
+import { BookForm, BookQuickForm } from '../components/BookForm';
 import { CategoryBreadcrumb, categoryTrail } from '../components/CategoryTree';
 import { Cover } from '../components/Cover';
 import { Empty, ErrorMessage, Loading, RatingInput } from '../components/common';
@@ -90,7 +90,7 @@ export function BookPage() {
           </p>
         </div>
         <div className="row">
-          <button onClick={() => setEditing(!editing)}>{editing ? 'Close editor' : 'Edit'}</button>
+          <button onClick={() => setEditing(!editing)}>{editing ? 'Close editor' : 'Add more details'}</button>
           <button className="danger" onClick={remove}>
             Delete
           </button>
@@ -111,55 +111,34 @@ export function BookPage() {
       ) : (
         <div className="card-grid">
           <div className="panel">
-            <Cover cover={b.cover} title={b.title} format={b.files[0]?.format} size="large" />
-            <RatingInput value={b.rating} disabled={mutations.setRating.isPending} onChange={(r) => mutations.setRating.mutate(r)} />
-            <label>
-              Status{' '}
-              <select value={b.readingStatus} onChange={(e) => mutations.setStatus.mutate(e.target.value as ReadingStatus)}>
-                {readingStatuses.map((s) => (
-                  <option key={s} value={s}>
-                    {statusLabels[s]}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="book-top">
+              <div className="book-cover-col">
+                <Cover cover={b.cover} title={b.title} format={b.files[0]?.format} size="large" />
+                <RatingInput value={b.rating} disabled={mutations.setRating.isPending} onChange={(r) => mutations.setRating.mutate(r)} />
+                <label>
+                  Status{' '}
+                  <select value={b.readingStatus} onChange={(e) => mutations.setStatus.mutate(e.target.value as ReadingStatus)}>
+                    {readingStatuses.map((s) => (
+                      <option key={s} value={s}>
+                        {statusLabels[s]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <BookQuickForm
+                key={b.updatedAt}
+                book={b}
+                pending={mutations.update.isPending}
+                error={mutations.update.error}
+                onSubmit={(fields) => mutations.update.mutate(fields)}
+              />
+            </div>
             <dl className="facts">
-              {b.isbn && (
-                <>
-                  <dt>ISBN</dt>
-                  <dd>{b.isbn}</dd>
-                </>
-              )}
               {b.publisher && (
                 <>
                   <dt>Publisher</dt>
                   <dd>{b.publisher}</dd>
-                </>
-              )}
-              {b.yearPublished && (
-                <>
-                  <dt>Year</dt>
-                  <dd>{b.yearPublished}</dd>
-                </>
-              )}
-              {b.totalPages && (
-                <>
-                  <dt>Pages</dt>
-                  <dd>{b.totalPages}</dd>
-                </>
-              )}
-              {b.language && (
-                <>
-                  <dt>Language</dt>
-                  <dd>{b.language}</dd>
-                </>
-              )}
-              {b.classifier && (
-                <>
-                  <dt>Classification</dt>
-                  <dd>
-                    <Link to={`/?classifierId=${b.classifier.id}`}>{b.classifier.name}</Link>
-                  </dd>
                 </>
               )}
               <dt>Last opened</dt>
@@ -218,30 +197,67 @@ export function BookPage() {
  * or keep the book without this file (the file record stays as meta info only).
  */
 function BookFileRow({ bookId, file, canSwitch }: { bookId: number; file: BookFile; canSwitch: boolean }) {
-  const { setPrimaryFile, detachFile } = useBookMutations(bookId);
+  const { setPrimaryFile, detachFile, renameFile } = useBookMutations(bookId);
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState('');
+  const [useAsTitle, setUseAsTitle] = useState(false);
+  const extension = file.fileName.match(/\.[^.]*$/)?.[0] ?? '';
 
   return (
     <div className="file-row">
       <OpenFileButton file={file} />
-      <div className="row">
-        {canSwitch && !file.isPrimary && file.status === 'Ok' && (
-          <button className="small" disabled={setPrimaryFile.isPending} onClick={() => setPrimaryFile.mutate(file.id)}>
-            Use this file
+      {renaming ? (
+        <form
+          className="row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            renameFile.mutate({ fileId: file.id, name: name.trim(), useAsTitle }, { onSuccess: () => setRenaming(false) });
+          }}
+        >
+          <input required maxLength={250} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          <span className="muted">{extension}</span>
+          <label className="check">
+            <input type="checkbox" checked={useAsTitle} onChange={(e) => setUseAsTitle(e.target.checked)} />
+            Also use as book title
+          </label>
+          <button type="submit" className="small" disabled={renameFile.isPending || !name.trim()}>
+            Save
           </button>
-        )}
-        {file.status !== 'Ok' && (
+          <button type="button" className="small" onClick={() => setRenaming(false)}>
+            Cancel
+          </button>
+        </form>
+      ) : (
+        <div className="row">
           <button
             className="small"
-            disabled={detachFile.isPending}
-            onClick={() =>
-              window.confirm('Keep the book without this file? The file record stays as meta info only.') && detachFile.mutate(file.id)
-            }
+            onClick={() => {
+              setName(extension ? file.fileName.slice(0, -extension.length) : file.fileName);
+              setUseAsTitle(false);
+              setRenaming(true);
+            }}
           >
-            Keep book without this file
+            Rename
           </button>
-        )}
-        <ErrorMessage error={setPrimaryFile.error ?? detachFile.error} />
-      </div>
+          {canSwitch && !file.isPrimary && file.status === 'Ok' && (
+            <button className="small" disabled={setPrimaryFile.isPending} onClick={() => setPrimaryFile.mutate(file.id)}>
+              Use this file
+            </button>
+          )}
+          {file.status !== 'Ok' && (
+            <button
+              className="small"
+              disabled={detachFile.isPending}
+              onClick={() =>
+                window.confirm('Keep the book without this file? The file record stays as meta info only.') && detachFile.mutate(file.id)
+              }
+            >
+              Keep book without this file
+            </button>
+          )}
+        </div>
+      )}
+      <ErrorMessage error={setPrimaryFile.error ?? detachFile.error ?? renameFile.error} />
     </div>
   );
 }

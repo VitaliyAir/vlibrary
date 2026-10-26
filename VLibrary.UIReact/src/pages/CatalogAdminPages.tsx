@@ -4,9 +4,6 @@ import {
   coverApi,
   useAuthorMutations,
   useAuthors,
-  useClassifierMutations,
-  useClassifiers,
-  useCategories,
   useCheckLibrary,
   useCoverStatus,
   useCoversChanged,
@@ -14,8 +11,8 @@ import {
   useSettings,
   useUpdateSettings,
 } from '../api/hooks';
-import type { Author, ClassifierNode } from '../api/types';
-import { Empty, ErrorMessage, Loading, Pagination } from '../components/common';
+import type { Author } from '../api/types';
+import { ErrorMessage, Loading, Pagination } from '../components/common';
 
 export function AuthorsPage() {
   const [text, setText] = useState('');
@@ -110,103 +107,6 @@ function AuthorEditor({ author, onDone }: { author: Author; onDone: () => void }
   );
 }
 
-/** Classification tree: Математика => Геометрия => Задачник. */
-export function ClassifiersPage() {
-  const classifiers = useClassifiers();
-  const mutations = useClassifierMutations();
-  const [title, setTitle] = useState('');
-
-  return (
-    <section>
-      <h1>Classification</h1>
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          mutations.create.mutate({ title: title.trim(), parentId: null }, { onSuccess: () => setTitle('') });
-        }}
-      >
-        <input required maxLength={250} placeholder="New top-level subject, e.g. “Математика”" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <button type="submit" className="primary" disabled={!title.trim()}>
-          Add
-        </button>
-      </form>
-      <ErrorMessage error={classifiers.error ?? mutations.create.error ?? mutations.update.error ?? mutations.remove.error} />
-      {classifiers.isLoading && <Loading />}
-      {classifiers.data?.length === 0 && <Empty>No classification yet.</Empty>}
-      <ul className="tree">
-        {classifiers.data?.map((node) => (
-          <ClassifierItem key={node.id} node={node} />
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function ClassifierItem({ node }: { node: ClassifierNode }) {
-  const mutations = useClassifierMutations();
-  const [renaming, setRenaming] = useState(false);
-  const [adding, setAdding] = useState(false);
-  const [text, setText] = useState('');
-
-  return (
-    <li>
-      {renaming ? (
-        <form
-          className="row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            mutations.update.mutate({ id: node.id, title: text.trim(), parentId: node.parentId }, { onSuccess: () => setRenaming(false) });
-          }}
-        >
-          <input required value={text} onChange={(e) => setText(e.target.value)} autoFocus />
-          <button type="submit">Save</button>
-          <button type="button" onClick={() => setRenaming(false)}>
-            Cancel
-          </button>
-        </form>
-      ) : (
-        <span className="tree-node">
-          <Link to={`/?classifierId=${node.id}`}>{node.title}</Link> <span className="muted">({node.booksCount})</span>
-          <button className="link" onClick={() => { setText(node.title); setRenaming(true); }}>
-            Rename
-          </button>
-          <button className="link" onClick={() => { setText(''); setAdding(true); }}>
-            + Sub
-          </button>
-          {node.children.length === 0 && (
-            <button className="link danger" onClick={() => window.confirm(`Delete “${node.title}”?`) && mutations.remove.mutate(node.id)}>
-              Delete
-            </button>
-          )}
-        </span>
-      )}
-      {adding && (
-        <form
-          className="row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            mutations.create.mutate({ title: text.trim(), parentId: node.id }, { onSuccess: () => setAdding(false) });
-          }}
-        >
-          <input required placeholder="Sub-classification" value={text} onChange={(e) => setText(e.target.value)} autoFocus />
-          <button type="submit">Add</button>
-          <button type="button" onClick={() => setAdding(false)}>
-            Cancel
-          </button>
-        </form>
-      )}
-      {node.children.length > 0 && (
-        <ul>
-          {node.children.map((child) => (
-            <ClassifierItem key={child.id} node={child} />
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-}
-
 /** UC-8 settings. */
 export function SettingsPage() {
   const settings = useSettings();
@@ -242,33 +142,16 @@ export function SettingsPage() {
   );
 }
 
-/**
- * The library tree: categories come from the imported folders (e.g. Library > Math). Files live in VStorage;
- * "Check files now" marks files whose object is gone as missing.
- */
+/** Files live in VStorage; "Check files now" marks files whose object is gone as missing. */
 function LibraryPanel() {
-  const categories = useCategories();
   const check = useCheckLibrary();
 
   return (
     <div className="panel">
       <h3>Library</h3>
       <p className="muted">
-        Categories are created from the folders you import. Click a category to see its books (subcategories included).
+        Files live in VStorage. Categories are managed (and backed up) on the <Link to="/categories">Categories</Link> page.
       </p>
-      {categories.isLoading && <Loading />}
-      {categories.data?.length === 0 && <Empty>No categories yet — the first import creates them.</Empty>}
-      <ul className="category-tree">
-        {categories.data?.map((category) => (
-          <li key={category.id} style={{ paddingLeft: `${(category.path.split('/').length - 1) * 1.25}rem` }}>
-            <Link to={`/?categoryId=${category.id}`}>{category.name}</Link>{' '}
-            <span className="muted">
-              ({category.files}
-              {category.totalFiles !== category.files ? ` / ${category.totalFiles} with subcategories` : ''})
-            </span>
-          </li>
-        ))}
-      </ul>
       <div className="row">
         <button className="primary" disabled={check.isPending} onClick={() => check.mutate()}>
           {check.isPending ? 'Checking…' : 'Check files now'}
@@ -279,7 +162,7 @@ function LibraryPanel() {
           </span>
         )}
       </div>
-      <ErrorMessage error={categories.error ?? check.error} />
+      <ErrorMessage error={check.error} />
       <CoversSection />
     </div>
   );

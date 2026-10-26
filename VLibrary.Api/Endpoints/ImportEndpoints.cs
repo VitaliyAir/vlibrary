@@ -16,6 +16,8 @@ namespace VLibrary.Api.Endpoints
 
     public sealed record PrecheckImportRequest(IReadOnlyList<PrecheckFileDto> Files);
 
+    public sealed record ResumeImportRequest(int TotalFiles);
+
     /// <summary>What the browser may upload: it filters the picked folder with these before starting.</summary>
     public sealed record ImportOptionsDto(IReadOnlyList<string> SupportedExtensions, IReadOnlyList<string> ExcludedFolders, long MaxFileBytes);
 
@@ -70,6 +72,11 @@ namespace VLibrary.Api.Endpoints
             group.MapPost("/{id:long}/cancel", async (long id, ISender sender, CancellationToken ct) =>
                     (await sender.Send(new CancelImportCommand(id), ct)).ToHttp())
                 .WithSummary("The user stopped the upload.");
+
+            group.MapPost("/{id:long}/resume", async (long id, ResumeImportRequest request, ISender sender, CancellationToken ct) =>
+                    (await sender.Send(new ResumeImportCommand(id, request.TotalFiles), ct)).ToHttp())
+                .WithSummary("Continue a stopped import with the same files picked again (then precheck, upload, complete). Files it " +
+                             "already handled are skipped and not counted again; failed files are tried again. 409 = completed or failed.");
 
             group.MapGet("/", async (int? take, ISender sender, CancellationToken ct) =>
                     (await sender.Send(new GetImportsQuery(take ?? 20), ct)).ToHttp())

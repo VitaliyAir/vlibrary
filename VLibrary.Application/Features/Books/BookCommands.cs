@@ -22,7 +22,6 @@ namespace VLibrary.Application.Features.Books
         LanguagesEnum? Language = null,
         string? TableOfContents = null,
         string? Glossary = null,
-        long? ClassifierId = null,
         IReadOnlyList<string>? Authors = null,
         IReadOnlyList<string>? Tags = null);
 
@@ -196,12 +195,6 @@ namespace VLibrary.Application.Features.Books
                 return isbn;
             }
 
-            if (fields.ClassifierId.HasValue
-                && !await db.BookClasificators.AnyAsync(c => c.Id == fields.ClassifierId.Value, cancellationToken))
-            {
-                return CommonErrors.NotFound("Classifier", fields.ClassifierId.Value);
-            }
-
             book.Title = fields.Title.Trim();
             book.Subtitle = fields.Subtitle;
             book.Description = fields.Description;
@@ -212,7 +205,6 @@ namespace VLibrary.Application.Features.Books
             book.Language = fields.Language;
             book.TableOfContents = fields.TableOfContents;
             book.Glossary = fields.Glossary;
-            book.BookClasificatorId = fields.ClassifierId;
 
             if (fields.Authors != null)
             {

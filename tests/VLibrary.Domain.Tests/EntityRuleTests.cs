@@ -20,6 +20,19 @@ namespace VLibrary.Domain.Tests
         }
 
         [Fact]
+        public void Author_Complete_FillsMissingNames_AndKeepsExistingOnes()
+        {
+            var author = AuthorInfoEntity.Create(PersonName.Parse("Толстой Л.Н.")!);
+
+            author.Complete(PersonName.Parse("Толстой, Лев Николаевич")!);
+            author.Complete(PersonName.Parse("Толстой, Лёва")!);
+
+            author.FirstName.Should().Be("Лев");
+            author.MiddleName.Should().Be("Николаевич");
+            author.LastName.Should().Be("Толстой");
+        }
+
+        [Fact]
         public void SetRating_InRange_IsStored()
         {
             var book = new BookEntity { Title = "Book" };

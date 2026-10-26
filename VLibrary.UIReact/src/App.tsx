@@ -3,8 +3,9 @@ import { NavLink, Outlet, Route, Routes } from 'react-router';
 import { useDuplicates } from './api/hooks';
 import { ReminderDialog } from './components/ReminderDialog';
 import { BookPage, NewBookPage } from './pages/BookPage';
-import { AuthorsPage, ClassifiersPage, SettingsPage } from './pages/CatalogAdminPages';
+import { AuthorsPage, SettingsPage } from './pages/CatalogAdminPages';
 import { CatalogPage } from './pages/CatalogPage';
+import { CategoriesPage } from './pages/CategoriesPage';
 import { DuplicatesPage } from './pages/DuplicatesPage';
 import { ImportPage } from './pages/ImportPage';
 import { NotesPage } from './pages/NotesPage';
@@ -32,7 +33,7 @@ function Layout() {
           Duplicates {pending > 0 && <span className="count">{pending}</span>}
         </NavLink>
         <NavLink to="/authors">Authors</NavLink>
-        <NavLink to="/classifiers">Classification</NavLink>
+        <NavLink to="/categories">Categories</NavLink>
         <NavLink to="/settings">Settings</NavLink>
         <div className="user-box">
           <span>{auth.user?.profile.preferred_username}</span>
@@ -62,7 +63,7 @@ export function App() {
         <Route path="import" element={<ImportPage />} />
         <Route path="duplicates" element={<DuplicatesPage />} />
         <Route path="authors" element={<AuthorsPage />} />
-        <Route path="classifiers" element={<ClassifiersPage />} />
+        <Route path="categories" element={<CategoriesPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<p>Page not found.</p>} />
       </Route>

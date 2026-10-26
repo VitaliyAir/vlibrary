@@ -24,7 +24,6 @@ namespace VLibrary.Application.Features.Books
                         b.Id, b.Title, b.Subtitle, b.Description, b.ISBN, b.Edition, b.Publisher, b.YearPublished, b.TotalPages,
                         b.Language, b.TableOfContents, b.Glossary, b.Rating, b.ReadingStatus, b.LastOpenedAt, b.CreatedAt, b.UpdatedAt
                     },
-                    Classifier = b.BookClasificator == null ? null : new NamedRefDto(b.BookClasificator.Id, b.BookClasificator.Title),
                     Authors = b.BookAuthors
                         .OrderBy(ba => ba.Order)
                         .Select(ba => new { ba.AuthorId, ba.Author.LastName, ba.Author.FirstName, ba.Author.MiddleName, ba.Author.NameInitials })
@@ -53,8 +52,9 @@ namespace VLibrary.Application.Features.Books
             return new BookDetailsDto(
                 b.Id, b.Title, b.Subtitle, b.Description, b.ISBN, b.Edition, b.Publisher, b.YearPublished, b.TotalPages,
                 b.Language, b.TableOfContents, b.Glossary, b.Rating, b.ReadingStatus, b.LastOpenedAt, b.CreatedAt, b.UpdatedAt,
-                row.Classifier,
-                row.Authors.Select(a => new NamedRefDto(a.AuthorId, PersonName.Format(a.LastName, a.FirstName, a.MiddleName, a.NameInitials))).ToList(),
+                row.Authors.Select(a => new BookAuthorDto(
+                    a.AuthorId, PersonName.Format(a.LastName, a.FirstName, a.MiddleName, a.NameInitials),
+                    a.LastName, a.FirstName, a.MiddleName, a.NameInitials)).ToList(),
                 row.Tags,
                 BookFileRow.ToDtos(row.Files),
                 row.Shelves,

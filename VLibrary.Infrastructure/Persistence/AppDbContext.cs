@@ -11,7 +11,6 @@ namespace VLibrary.Infrastructure.Persistence
         public DbSet<AuthorInfoEntity> Authors => Set<AuthorInfoEntity>();
         public DbSet<BookAuthorEntity> BookAuthors => Set<BookAuthorEntity>();
         public DbSet<TagEntity> Tags => Set<TagEntity>();
-        public DbSet<BookClasificatorEntity> BookClasificators => Set<BookClasificatorEntity>();
         public DbSet<CategoryEntity> Categories => Set<CategoryEntity>();
         public DbSet<FileMetaEntity> FileMetas => Set<FileMetaEntity>();
         public DbSet<FileCoverEntity> FileCovers => Set<FileCoverEntity>();

@@ -85,6 +85,20 @@ namespace VLibrary.Domain.Entities
         /// <summary>The browser stopped sending (tab closed, API restarted) and never completed the import.</summary>
         public void Interrupt(DateTime utcNow) => Finish(ImportStatus.Cancelled, utcNow, InterruptedMessage);
 
+        /// <summary>
+        /// Continue a cancelled or interrupted import: the browser sends the same files again (<paramref name="totalFiles"/>);
+        /// files already handled are skipped uncounted, the <paramref name="failedRetried"/> failed ones are tried again.
+        /// </summary>
+        public void Resume(int totalFiles, int failedRetried)
+        {
+            Status = ImportStatus.Running;
+            FinishedAt = null;
+            Error = null;
+            TotalFiles = Math.Max(totalFiles, 0);
+            FailedCount -= failedRetried;
+            ProcessedFiles -= failedRetried;
+        }
+
         public void Fail(string error, DateTime utcNow) => Finish(ImportStatus.Failed, utcNow, error);
 
         private void Finish(ImportStatus status, DateTime utcNow, string? error)

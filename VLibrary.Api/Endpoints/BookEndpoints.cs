@@ -19,10 +19,10 @@ namespace VLibrary.Api.Endpoints
 
             group.MapGet("/", async (
                     string? q, long? shelfId, bool? onShelf, ReadingStatus? status, string? tag, FileTypesEnum? format,
-                    int? minRating, long? classifierId, long? authorId, long? categoryId, BookSort? sort, int? page, int? pageSize,
+                    int? minRating, long? authorId, long? categoryId, BookSort? sort, int? page, int? pageSize,
                     ISender sender, CancellationToken ct) =>
                     (await sender.Send(new SearchBooksQuery(
-                        q, shelfId, onShelf, status, tag, format, minRating, classifierId, authorId, categoryId,
+                        q, shelfId, onShelf, status, tag, format, minRating, authorId, categoryId,
                         sort ?? BookSort.Title, page ?? 1, pageSize ?? 50), ct)).ToHttp())
                 .WithSummary("UC-4: search and filter the catalog.");
 

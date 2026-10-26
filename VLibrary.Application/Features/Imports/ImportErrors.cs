@@ -10,6 +10,12 @@ namespace VLibrary.Application.Features.Imports
         public static Error AlreadyFinished(long id) =>
             Error.Conflict("Import.AlreadyFinished", $"Import {id} has already finished.");
 
+        public static Error CannotResume(long id) =>
+            Error.Conflict("Import.CannotResume", $"Import {id} is completed or failed; start a new import instead.");
+
+        public static Error ParentCategoryMerged(long id) =>
+            Error.Conflict("Import.ParentCategoryMerged", $"The parent category of import {id} was merged into another one; start a new import.");
+
         public static Error ParentCategoryNotFound(long id) =>
             Error.NotFound("Import.ParentCategoryNotFound", $"Category {id} was not found.");
 

@@ -1,3 +1,4 @@
+using VLibrary.Domain.Common;
 using VLibrary.Domain.Enums;
 using VLibrary.Domain.Rules;
 using VLibrary.Domain.ValueObjects;
@@ -10,6 +11,11 @@ namespace VLibrary.Domain.Entities
     /// </summary>
     public class FileMetaEntity : AuditableEntity
     {
+        public const int MaxBaseNameLength = 250;
+
+        // Not allowed in a file name: path separators and what Windows cannot store (the backup writes to disk).
+        private static readonly char[] InvalidNameChars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+
         public long CategoryId { get; private set; }
         public virtual CategoryEntity Category { get; private set; } = null!;
 
@@ -31,6 +37,12 @@ namespace VLibrary.Domain.Entities
 
         /// <summary>The VStorage key, e.g. "Library/Math/Geometry.pdf".</summary>
         public string StorageKey { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// The name the file had on disk when it was imported; set by the first rename in the library, kept by later ones,
+        /// null when never renamed (or renamed back). An import of the disk file under this name finds this file.
+        /// </summary>
+        public string? OriginalFileName { get; private set; }
 
         public int? PageCount { get; set; }
         public DateTime LastSeenAt { get; private set; }
@@ -102,6 +114,69 @@ namespace VLibrary.Domain.Entities
 
             file.Touch(sizeBytes, lastWriteTimeUtc, utcNow);
             return file;
+        }
+
+        /// <summary>The category was renamed, moved or merged: the file's category and VStorage key follow it.</summary>
+        public void PlaceIn(CategoryEntity category)
+        {
+            Category = category;
+            CategoryId = category.Id;
+            StorageKey = StorageKeyFor(category.Path, FileName);
+        }
+
+        /// <summary>
+        /// A new name without the extension ("Astronomy"); the extension of the current name stays. The first rename
+        /// remembers the name in <see cref="OriginalFileName"/>; the VStorage key follows (requires <see cref="Category"/>).
+        /// The caller checks that the name is free in the category and renames the object in VStorage.
+        /// </summary>
+        public Result Rename(string baseName)
+        {
+            var valid = ValidateBaseName(baseName);
+            if (valid.IsFailure)
+            {
+                return valid.Error;
+            }
+
+            var newName = valid.Value + Path.GetExtension(FileName);
+            if (string.Equals(newName, FileName, StringComparison.Ordinal))
+            {
+                return Result.Success();
+            }
+
+            OriginalFileName ??= FileName;
+            if (newName == OriginalFileName)
+            {
+                OriginalFileName = null;
+            }
+
+            FileName = newName;
+            StorageKey = StorageKeyFor(Category.Path, FileName);
+            return Result.Success();
+        }
+
+        /// <summary>Another file of the category took the original name: it no longer leads here.</summary>
+        public void ForgetOriginalName() => OriginalFileName = null;
+
+        /// <summary>A file name without extension: trimmed, not empty, no path or Windows-invalid characters, no dot at the end.</summary>
+        public static Result<string> ValidateBaseName(string? name)
+        {
+            var trimmed = name?.Trim() ?? string.Empty;
+            if (trimmed.Length == 0)
+            {
+                return Error.Validation("File.Name", "A file name is required.");
+            }
+
+            if (trimmed.Length > MaxBaseNameLength)
+            {
+                return Error.Validation("File.Name", $"A file name must not exceed {MaxBaseNameLength} characters.");
+            }
+
+            if (trimmed is "." or ".." || trimmed.EndsWith('.') || trimmed.Any(c => char.IsControl(c) || InvalidNameChars.Contains(c)))
+            {
+                return Error.Validation("File.Name", $"'{trimmed}' cannot be a file name (not allowed: / \\ : * ? \" < > | and a dot at the end).");
+            }
+
+            return trimmed;
         }
 
         /// <summary>

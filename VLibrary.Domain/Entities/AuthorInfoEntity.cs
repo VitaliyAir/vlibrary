@@ -32,6 +32,24 @@ namespace VLibrary.Domain.Entities
             return author;
         }
 
+        /// <summary>
+        /// The same author (same match key) written more fully, e.g. "Толстой, Лев Николаевич" after "Толстой Л.Н.":
+        /// missing first / middle names are filled in; existing parts are not changed.
+        /// </summary>
+        public void Complete(PersonName name)
+        {
+            if (string.IsNullOrWhiteSpace(FirstName) && !string.IsNullOrWhiteSpace(name.FirstName))
+            {
+                FirstName = name.FirstName;
+                MiddleName ??= name.MiddleName;
+            }
+            else if (string.IsNullOrWhiteSpace(MiddleName) && !string.IsNullOrWhiteSpace(name.MiddleName)
+                     && string.Equals(FirstName, name.FirstName, StringComparison.OrdinalIgnoreCase))
+            {
+                MiddleName = name.MiddleName;
+            }
+        }
+
         public void RefreshNormalizedName()
         {
             NormalizedName = PersonName.BuildMatchKey(LastName, FirstName, NameInitials);

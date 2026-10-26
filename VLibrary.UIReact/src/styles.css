@@ -97,7 +97,7 @@ button.link.danger { color: var(--danger); }
 .file-path.missing a { color: var(--danger); text-decoration: line-through; }
 .file-row { padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
 
-.card-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; }
+.card-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 280px); gap: 1rem; }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 1rem; margin: 0.75rem 0; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; }
@@ -110,6 +110,19 @@ button.link.danger { color: var(--danger); }
 .book-form { display: flex; flex-direction: column; gap: 0.6rem; }
 .book-form label { display: flex; flex-direction: column; gap: 0.2rem; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; }
+
+/* Book card: cover column + main fields edited in place */
+.book-top { display: grid; grid-template-columns: minmax(160px, 260px) minmax(0, 1fr); gap: 50px; align-items: start; }
+.book-form label.inline-field { flex-direction: row; align-items: center; gap: 40px; }
+.inline-field .field-caption { white-space: nowrap; }
+.inline-field input { flex: 1; min-width: 0; }
+.book-cover-col { display: flex; flex-direction: column; gap: 0.5rem; }
+.authors-editor { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 0.4rem; align-items: flex-start; }
+/* Inputs in the grids fill their cell and may shrink (the browser default width made the rows overflow). */
+.author-row input, .grid-4 input, .grid-4 select { width: 100%; min-width: 0; }
+.grid-4 label { min-width: 0; }
+.author-row { display: grid; grid-template-columns: repeat(3, 1fr) auto; gap: 0.4rem; width: 100%; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem; }
 
 .note-form { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.5rem 0 1rem; }
 .notes { list-style: none; padding: 0; }
@@ -164,7 +177,9 @@ button.link.danger { color: var(--danger); }
   .sidebar a { padding: 0.25rem 0.5rem; }
   .sidebar hr { display: none; }
   main { padding: 1rem; }
-  .card-grid, .split, .grid-3 { grid-template-columns: 1fr; }
+  .card-grid, .split, .grid-3, .book-top { grid-template-columns: 1fr; }
+  .grid-4, .author-row { grid-template-columns: 1fr 1fr; }
+  .book-top { gap: 1rem; }
 }
 
 /* Stage 6a: availability of a book's files (D7) */

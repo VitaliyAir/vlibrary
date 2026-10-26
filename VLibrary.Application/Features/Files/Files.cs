@@ -30,6 +30,12 @@ namespace VLibrary.Application.Features.Files
     /// </summary>
     public sealed record MarkFileOpenedCommand(long Id) : IRequest<Result<OpenedFileDto>>;
 
+    /// <summary>The content of a file streamed from VStorage (the backup; the browser cannot read VStorage links directly).</summary>
+    public sealed record OpenFileContentQuery(long Id) : IRequest<Result<FileContentDto>>;
+
+    /// <param name="Content">The caller disposes it.</param>
+    public sealed record FileContentDto(string FileName, Stream Content);
+
     internal sealed class GetFilesValidator : AbstractValidator<GetFilesQuery>
     {
         public GetFilesValidator()
@@ -42,7 +48,8 @@ namespace VLibrary.Application.Features.Files
     internal sealed class FileHandlers(IAppDbContext db, IBookStorage storage, IClock clock)
         : IRequestHandler<GetFilesQuery, Result<PagedList<FileListItemDto>>>,
           IRequestHandler<GetFileQuery, Result<FileListItemDto>>,
-          IRequestHandler<MarkFileOpenedCommand, Result<OpenedFileDto>>
+          IRequestHandler<MarkFileOpenedCommand, Result<OpenedFileDto>>,
+          IRequestHandler<OpenFileContentQuery, Result<FileContentDto>>
     {
         private static readonly Expression<Func<FileMetaEntity, FileListItemDto>> Projection = f => new FileListItemDto(
             f.Id, f.FileName, f.CategoryId, f.StorageKey, f.Format, f.SizeBytes, f.PageCount, f.Status,
@@ -108,6 +115,29 @@ namespace VLibrary.Application.Features.Files
             await db.SaveChangesAsync(cancellationToken);
 
             return new OpenedFileDto(file.Id, link.Value.Url, link.Value.ExpiresAt, file.BookId);
+        }
+
+        public async Task<Result<FileContentDto>> Handle(OpenFileContentQuery request, CancellationToken cancellationToken)
+        {
+            var file = await db.FileMetas.FirstOrDefaultAsync(f => f.Id == request.Id, cancellationToken);
+            if (file == null)
+            {
+                return CommonErrors.NotFound("File", request.Id);
+            }
+
+            var content = await storage.OpenReadAsync(file.StorageObjectId, cancellationToken);
+            if (content.IsFailure)
+            {
+                if (content.Error == StorageErrors.NotFound)
+                {
+                    file.MarkMissing();
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+
+                return content.Error;
+            }
+
+            return new FileContentDto(file.FileName, content.Value);
         }
     }
 }

@@ -1,7 +1,7 @@
 # VLibrary
 
 Personal virtual library: imports PDF / EPUB / DjVu / DOC / DOCX / TXT files, detects duplicates, keeps a catalog with
-authors, tags, classification, categories, shelves, ratings and reading status, full-text search, notes and quotes
+authors, tags, categories, shelves, ratings and reading status, full-text search, notes and quotes
 with page numbers, and spaced-repetition reminders of notes. Use cases: `virtual_library_use_cases.pdf`.
 
 The book files themselves are stored in **VStorageAPI** (bucket `vlibrary-books`); VLibrary keeps only their meta info
@@ -103,6 +103,28 @@ same extension and file size 80%; anything else is imported as a new book. Title
 straight to the browser; the API records that the book was opened. Settings → Library → **Check files now**
 lists the bucket and marks files whose object is gone as Missing; the UI colours books whose files cannot be opened.
 Removing a book or file from the library keeps its VStorage object.
+
+### Changing categories
+
+The **Categories** page corrects the tree that imports created: **Rename** (`Physcs` → `Physics`), **Move** with all
+subcategories and files to another place, **+ Sub**, and **Delete** (only empty categories). Moving onto a category with
+the same name **merges** them (subcategories with the same name merge too); two files with the same name in one category
+stop the merge with a list, and nothing changes. The files' VStorage keys follow every change
+(`POST /buckets/{id}/objects/rename` in VStorage), so VStorage keeps the same folder structure. Not possible while an
+import is running.
+
+The old name and place stay as a redirect ("also imported as: Library/Physcs (renamed)"): importing the old disk folder
+again finds the known books as unchanged and puts new books into the current category. **×** forgets an old name.
+If the category an old name leads to is deleted, the next import from that folder creates the category again and marks
+those lines in the import report ("created again").
+
+### Backup
+
+Categories → **Back up to a folder…** (Chrome or Edge) copies every library file into a folder you choose, in
+subfolders like the categories (`<folder>/Library/Physics/Classic/book.pdf`). Files already there with the same size
+are skipped, so running it again continues an interrupted backup or adds new books; books removed from the library are
+not deleted from the backup. Files are streamed one by one VStorage → API → disk (`GET /api/v1/backup/files`,
+`GET /api/v1/files/{id}/content`). Only the book files are copied, not notes or book data.
 
 ### Covers
 

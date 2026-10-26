@@ -56,8 +56,6 @@ namespace VLibrary.Domain.Entities
         /// </summary>
         public string SearchText { get; private set; } = string.Empty;
 
-        public long? BookClasificatorId { get; set; }
-        public BookClasificatorEntity? BookClasificator { get; set; }
         public ICollection<BookAuthorEntity> BookAuthors { get; set; } = new List<BookAuthorEntity>();
         public ICollection<TagEntity> Tags { get; set; } = new List<TagEntity>();
         public ICollection<FileMetaEntity> FilesMetas { get; set; } = new List<FileMetaEntity>();

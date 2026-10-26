@@ -9,7 +9,6 @@ namespace VLibrary.Application.Abstractions
         DbSet<AuthorInfoEntity> Authors { get; }
         DbSet<BookAuthorEntity> BookAuthors { get; }
         DbSet<TagEntity> Tags { get; }
-        DbSet<BookClasificatorEntity> BookClasificators { get; }
         DbSet<CategoryEntity> Categories { get; }
         DbSet<FileMetaEntity> FileMetas { get; }
         DbSet<FileCoverEntity> FileCovers { get; }

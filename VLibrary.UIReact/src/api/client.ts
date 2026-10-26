@@ -112,6 +112,22 @@ async function getBlob(path: string): Promise<Blob | null> {
   return response.blob();
 }
 
+/** A GET whose body the caller reads as a stream (backup). Throws ApiError when not ok. */
+async function getStream(path: string): Promise<Response> {
+  const response = await authorizedFetch(`${baseUrl}/api/v1${path}`, { method: 'GET' });
+  if (!response.ok || !response.body) {
+    let detail = '';
+    try {
+      const problem = (await response.json()) as ProblemDetails;
+      detail = problem.detail || problem.title || '';
+    } catch {
+      // not JSON
+    }
+    throw new ApiError(detail || `${response.status} ${response.statusText}`, response.status);
+  }
+  return response;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T = void>(path: string, body?: unknown) => request<T>('POST', path, body),
@@ -120,4 +136,5 @@ export const api = {
   /** multipart/form-data POST (book upload). */
   upload: <T>(path: string, form: FormData) => request<T>('POST', path, form),
   blob: getBlob,
+  stream: getStream,
 };

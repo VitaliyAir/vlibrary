@@ -5,16 +5,18 @@ import { api, withQuery } from './client';
 import type {
   Author,
   AuthorFields,
+  BackupManifest,
   BookDetails,
   BookFields,
   BookListItem,
   BookSort,
   Category,
-  ClassifierNode,
+  CategoryChange,
   CoverStatus,
   GenerateCoversResult,
   DuplicateReview,
   FileFormat,
+  FileRenamed,
   ImportBatch,
   ImportBatchDetails,
   ImportFileResult,
@@ -45,7 +47,6 @@ export interface BookSearch {
   tag?: string;
   format?: FileFormat;
   minRating?: number;
-  classifierId?: number;
   authorId?: number;
   categoryId?: number;
   sort?: BookSort;
@@ -61,7 +62,6 @@ const keys = {
   imports: ['imports'] as const,
   duplicates: ['duplicates'] as const,
   authors: ['authors'] as const,
-  classifiers: ['classifiers'] as const,
   readingRoom: ['reading-room'] as const,
   settings: ['settings'] as const,
   categories: ['categories'] as const,
@@ -72,7 +72,7 @@ function useInvalidateLibrary() {
   const client = useQueryClient();
   return () =>
     Promise.all(
-      [keys.books, keys.notes, keys.shelves, keys.readingRoom, keys.duplicates, keys.authors, keys.classifiers, keys.categories].map((queryKey) =>
+      [keys.books, keys.notes, keys.shelves, keys.readingRoom, keys.duplicates, keys.authors, keys.categories].map((queryKey) =>
         client.invalidateQueries({ queryKey }),
       ),
     );
@@ -102,6 +102,11 @@ export function useBookMutations(id: number) {
     removeFromShelf: useMutation({ mutationFn: (shelfId: number) => api.delete(`/shelves/${shelfId}/books/${id}`), ...options }),
     setPrimaryFile: useMutation({ mutationFn: (fileId: number) => api.post(`/books/${id}/files/${fileId}/primary`), ...options }),
     detachFile: useMutation({ mutationFn: (fileId: number) => api.post(`/books/${id}/files/${fileId}/detach`), ...options }),
+    renameFile: useMutation({
+      mutationFn: ({ fileId, name, useAsTitle }: { fileId: number; name: string; useAsTitle: boolean }) =>
+        api.put<FileRenamed>(`/files/${fileId}/name`, { name, useAsTitle }),
+      ...options,
+    }),
   };
 }
 
@@ -233,6 +238,7 @@ export const importApi = {
   },
   complete: (id: number) => api.post<ImportBatch>(`/imports/${id}/complete`),
   cancel: (id: number) => api.post(`/imports/${id}/cancel`),
+  resume: (id: number, totalFiles: number) => api.post<ImportBatch>(`/imports/${id}/resume`, { totalFiles }),
 };
 
 /** Refreshes the import list and everything an import changes. */
@@ -259,7 +265,7 @@ export function useDuplicateMutations() {
   };
 }
 
-// Catalog: authors, tags, classifiers
+// Catalog: authors, tags
 
 export const useAuthors = (q: string, page: number) =>
   useQuery({
@@ -280,24 +286,29 @@ export function useAuthorMutations() {
 export const useTags = (q: string) =>
   useQuery({ queryKey: ['tags', q], queryFn: () => api.get<Tag[]>(withQuery('/tags', { q, take: 30 })), staleTime: 30_000 });
 
-export const useClassifiers = () => useQuery({ queryKey: keys.classifiers, queryFn: () => api.get<ClassifierNode[]>('/classifiers') });
-
-export function useClassifierMutations() {
-  const invalidate = useInvalidateLibrary();
-  const options = { onSuccess: invalidate };
-  return {
-    create: useMutation({ mutationFn: (body: { title: string; parentId: number | null }) => api.post<{ id: number }>('/classifiers', body), ...options }),
-    update: useMutation({
-      mutationFn: ({ id, ...body }: { id: number; title: string; parentId: number | null }) => api.put(`/classifiers/${id}`, body),
-      ...options,
-    }),
-    remove: useMutation({ mutationFn: (id: number) => api.delete(`/classifiers/${id}`), ...options }),
-  };
-}
-
 // Categories and file availability
 
 export const useCategories = () => useQuery({ queryKey: keys.categories, queryFn: () => api.get<Category[]>('/categories') });
+
+export function useCategoryMutations() {
+  const invalidate = useInvalidateLibrary();
+  const options = { onSuccess: invalidate };
+  return {
+    create: useMutation({ mutationFn: (body: { name: string; parentId: number | null }) => api.post<{ id: number }>('/categories', body), ...options }),
+    update: useMutation({
+      mutationFn: ({ id, ...body }: { id: number; name: string; parentId: number | null }) => api.put<CategoryChange>(`/categories/${id}`, body),
+      ...options,
+    }),
+    remove: useMutation({ mutationFn: (id: number) => api.delete(`/categories/${id}`), ...options }),
+  };
+}
+
+// Backup
+
+export const backupApi = {
+  manifest: () => api.get<BackupManifest>('/backup/files'),
+  content: (fileId: number) => api.stream(`/files/${fileId}/content`),
+};
 
 export function useCheckLibrary() {
   const invalidate = useInvalidateLibrary();

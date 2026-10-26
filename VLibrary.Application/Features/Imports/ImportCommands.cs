@@ -32,6 +32,12 @@ namespace VLibrary.Application.Features.Imports
     /// <summary>The user stopped the upload.</summary>
     public sealed record CancelImportCommand(long ImportId) : IRequest<Result>;
 
+    /// <summary>
+    /// Continue a stopped import (cancelled, interrupted, or left running): the browser picked the same files again and
+    /// runs precheck + upload as usual. Files this import already handled are skipped; failed files are tried again.
+    /// </summary>
+    public sealed record ResumeImportCommand(long ImportId, int TotalFiles) : IRequest<Result<ImportBatchDto>>;
+
     internal sealed class CreateImportValidator : AbstractValidator<CreateImportCommand>
     {
         public CreateImportValidator()
@@ -56,6 +62,11 @@ namespace VLibrary.Application.Features.Imports
         }
     }
 
+    internal sealed class ResumeImportValidator : AbstractValidator<ResumeImportCommand>
+    {
+        public ResumeImportValidator() => RuleFor(c => c.TotalFiles).InclusiveBetween(0, 1_000_000);
+    }
+
     internal sealed class ImportFileValidator : AbstractValidator<ImportFileCommand>
     {
         public ImportFileValidator()
@@ -75,14 +86,15 @@ namespace VLibrary.Application.Features.Imports
           IRequestHandler<PrecheckImportCommand, Result<PrecheckResultDto>>,
           IRequestHandler<ImportFileCommand, Result<ImportFileResultDto>>,
           IRequestHandler<CompleteImportCommand, Result<ImportBatchDto>>,
-          IRequestHandler<CancelImportCommand, Result>
+          IRequestHandler<CancelImportCommand, Result>,
+          IRequestHandler<ResumeImportCommand, Result<ImportBatchDto>>
     {
         public async Task<Result<long>> Handle(CreateImportCommand request, CancellationToken cancellationToken)
         {
             CategoryEntity? parent = null;
             if (request.ParentCategoryId is { } parentId)
             {
-                parent = await db.Categories.FirstOrDefaultAsync(c => c.Id == parentId, cancellationToken);
+                parent = await db.Categories.FirstOrDefaultAsync(c => c.Id == parentId && c.RedirectState == null, cancellationToken);
                 if (parent == null)
                 {
                     return ImportErrors.ParentCategoryNotFound(parentId);
@@ -107,8 +119,9 @@ namespace VLibrary.Application.Features.Imports
             }
 
             var now = clock.UtcNow;
-            var resolved = new Dictionary<string, CategoryEntity?>(StringComparer.OrdinalIgnoreCase);
+            var resolved = new Dictionary<string, (CategoryEntity? Category, string Path)>(StringComparer.OrdinalIgnoreCase);
             var candidates = new List<(PrecheckFileDto File, CategoryEntity Category, string FileName)>();
+            var keys = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var file in request.Files)
             {
                 var path = ImportPath.Parse(file.RelativePath);
@@ -118,32 +131,66 @@ namespace VLibrary.Application.Features.Imports
                 }
 
                 var folders = string.Join(CategoryEntity.Separator, path.Value.Folders);
-                if (!resolved.TryGetValue(folders, out var category))
+                if (!resolved.TryGetValue(folders, out var target))
                 {
-                    category = await categories.FindAsync(batch.Value.ParentCategory, path.Value.Folders, cancellationToken);
-                    resolved[folders] = category;
+                    target = (await categories.FindAsync(batch.Value.ParentCategory, path.Value.Folders, cancellationToken),
+                        await categories.PathOfAsync(batch.Value.ParentCategory, path.Value.Folders, cancellationToken));
+                    resolved[folders] = target;
                 }
 
-                if (category != null)
+                var key = target.Path.Length == 0 ? path.Value.FileName : FileMetaEntity.StorageKeyFor(target.Path, path.Value.FileName);
+                keys.TryAdd(key, file.RelativePath);
+                if (target.Category != null)
                 {
-                    candidates.Add((file, category, path.Value.FileName));
+                    candidates.Add((file, target.Category, path.Value.FileName));
                 }
             }
 
+            // Reported by this import already (it was stopped and continued): not sent again. Failed lines were removed
+            // by "Continue", so failed files are sent again.
+            var keyList = keys.Keys.ToList();
+            var reported = await db.ImportItems
+                .Where(i => i.ImportBatchId == batch.Value.Id && keyList.Contains(i.Path))
+                .Select(i => i.Path)
+                .ToListAsync(cancellationToken);
+            var skip = reported.Select(k => keys[k]).ToHashSet();
+
             var categoryIds = candidates.Select(c => c.Category.Id).Distinct().ToList();
             var names = candidates.Select(c => c.FileName).Distinct().ToList();
-            var known = (await db.FileMetas.IgnoreQueryFilters()
-                    .Include(f => f.Book)
-                    .Where(f => categoryIds.Contains(f.CategoryId) && names.Contains(f.FileName))
-                    .ToListAsync(cancellationToken))
-                .ToDictionary(f => (f.CategoryId, f.FileName));
+            var rows = await db.FileMetas.IgnoreQueryFilters()
+                .Include(f => f.Book)
+                .Where(f => categoryIds.Contains(f.CategoryId)
+                    && (names.Contains(f.FileName) || (f.OriginalFileName != null && names.Contains(f.OriginalFileName))))
+                .ToListAsync(cancellationToken);
+            var known = rows.ToDictionary(f => (f.CategoryId, f.FileName));
 
-            var skip = new List<string>();
+            // Files renamed in the library are found by their original names too (current names win).
+            foreach (var file in rows)
+            {
+                if (!file.IsDeleted && file.OriginalFileName != null)
+                {
+                    known.TryAdd((file.CategoryId, file.OriginalFileName), file);
+                }
+            }
+
             foreach (var (file, category, fileName) in candidates)
             {
+                if (skip.Contains(file.RelativePath))
+                {
+                    continue;
+                }
+
                 var lastWriteTime = DateTimeOffset.FromUnixTimeMilliseconds(file.LastModified).UtcDateTime;
                 if (!known.TryGetValue((category.Id, fileName), out var existing) || !existing.IsUnchanged(file.Size, lastWriteTime))
                 {
+                    continue;
+                }
+
+                // Already handled by this import (it was stopped and continued): skipped, not counted again.
+                var seen = existing.IsDeleted ? existing.DeletedReportedAt : existing.LastSeenAt;
+                if (seen >= batch.Value.StartedAt)
+                {
+                    skip.Add(file.RelativePath);
                     continue;
                 }
 
@@ -165,7 +212,7 @@ namespace VLibrary.Application.Features.Imports
             }
 
             await db.SaveChangesAsync(cancellationToken);
-            return new PrecheckResultDto(skip, ImportBatchDto.From(batch.Value));
+            return new PrecheckResultDto(skip.ToList(), ImportBatchDto.From(batch.Value));
         }
 
         public async Task<Result<ImportFileResultDto>> Handle(ImportFileCommand request, CancellationToken cancellationToken)
@@ -230,6 +277,37 @@ namespace VLibrary.Application.Features.Imports
             batch.Value.Cancel(clock.UtcNow);
             await db.SaveChangesAsync(cancellationToken);
             return Result.Success();
+        }
+
+        public async Task<Result<ImportBatchDto>> Handle(ResumeImportCommand request, CancellationToken cancellationToken)
+        {
+            var batch = await db.ImportBatches.Include(b => b.ParentCategory)
+                .FirstOrDefaultAsync(b => b.Id == request.ImportId, cancellationToken);
+            if (batch == null)
+            {
+                return ImportErrors.NotFound(request.ImportId);
+            }
+
+            if (batch.Status is ImportStatus.Completed or ImportStatus.Failed)
+            {
+                return ImportErrors.CannotResume(request.ImportId);
+            }
+
+            if (batch.ParentCategory is { RedirectState: not null })
+            {
+                return ImportErrors.ParentCategoryMerged(request.ImportId);
+            }
+
+            // Failed files are tried again: their report lines and counts go.
+            var failed = await db.ImportItems
+                .Where(i => i.ImportBatchId == batch.Id && i.Outcome == ImportOutcome.Failed)
+                .ToListAsync(cancellationToken);
+            db.ImportItems.RemoveRange(failed);
+            batch.Resume(request.TotalFiles, failed.Count);
+            await db.SaveChangesAsync(cancellationToken);
+            logger.LogInformation(
+                "Import {BatchId} continued: {Count} files, {Failed} failed file(s) tried again", batch.Id, request.TotalFiles, failed.Count);
+            return ImportBatchDto.From(batch);
         }
 
         private async Task<Result<ImportBatchEntity>> LoadRunningAsync(long id, CancellationToken cancellationToken)

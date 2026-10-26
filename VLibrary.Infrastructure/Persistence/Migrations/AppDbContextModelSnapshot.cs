@@ -201,42 +201,6 @@ namespace VLibrary.Infrastructure.Persistence.Migrations
                     b.ToTable("book_authors", (string)null);
                 });
 
-            modelBuilder.Entity("VLibrary.Domain.Entities.BookClasificatorEntity", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<long?>("ParentId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("parent_id");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(250)
-                        .HasColumnType("character varying(250)")
-                        .HasColumnName("title");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_book_clasificators");
-
-                    b.HasIndex("ParentId")
-                        .HasDatabaseName("ix_book_clasificators_parent_id");
-
-                    b.ToTable("book_clasificators", (string)null);
-                });
-
             modelBuilder.Entity("VLibrary.Domain.Entities.BookEntity", b =>
                 {
                     b.Property<long>("Id")
@@ -245,10 +209,6 @@ namespace VLibrary.Infrastructure.Persistence.Migrations
                         .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<long?>("BookClasificatorId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("book_clasificator_id");
 
                     b.Property<byte[]>("CoverImage")
                         .HasColumnType("bytea")
@@ -363,9 +323,6 @@ namespace VLibrary.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_books");
-
-                    b.HasIndex("BookClasificatorId")
-                        .HasDatabaseName("ix_books_book_clasificator_id");
 
                     b.HasIndex("ISBN")
                         .HasDatabaseName("ix_books_isbn");
@@ -581,6 +538,14 @@ namespace VLibrary.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("path");
 
+                    b.Property<int?>("RedirectState")
+                        .HasColumnType("integer")
+                        .HasColumnName("redirect_state");
+
+                    b.Property<long?>("RedirectToId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("redirect_to_id");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -590,6 +555,9 @@ namespace VLibrary.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Path")
                         .HasDatabaseName("ix_categories_path");
+
+                    b.HasIndex("RedirectToId")
+                        .HasDatabaseName("ix_categories_redirect_to_id");
 
                     b.HasIndex("ParentId", "NameKey")
                         .IsUnique()
@@ -776,6 +744,11 @@ namespace VLibrary.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("LastWriteTime")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_write_time");
+
+                    b.Property<string>("OriginalFileName")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("original_file_name");
 
                     b.Property<int?>("PageCount")
                         .HasColumnType("integer")
@@ -1062,28 +1035,6 @@ namespace VLibrary.Infrastructure.Persistence.Migrations
                     b.Navigation("Book");
                 });
 
-            modelBuilder.Entity("VLibrary.Domain.Entities.BookClasificatorEntity", b =>
-                {
-                    b.HasOne("VLibrary.Domain.Entities.BookClasificatorEntity", "Parent")
-                        .WithMany("Children")
-                        .HasForeignKey("ParentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_book_clasificators_book_clasificators_parent_id");
-
-                    b.Navigation("Parent");
-                });
-
-            modelBuilder.Entity("VLibrary.Domain.Entities.BookEntity", b =>
-                {
-                    b.HasOne("VLibrary.Domain.Entities.BookClasificatorEntity", "BookClasificator")
-                        .WithMany("Books")
-                        .HasForeignKey("BookClasificatorId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_books_book_clasificators_book_clasificator_id");
-
-                    b.Navigation("BookClasificator");
-                });
-
             modelBuilder.Entity("VLibrary.Domain.Entities.BookNoteEntity", b =>
                 {
                     b.HasOne("VLibrary.Domain.Entities.BookEntity", "Book")
@@ -1133,7 +1084,15 @@ namespace VLibrary.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_categories_categories_parent_id");
 
+                    b.HasOne("VLibrary.Domain.Entities.CategoryEntity", "RedirectTo")
+                        .WithMany()
+                        .HasForeignKey("RedirectToId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_categories_categories_redirect_to_id");
+
                     b.Navigation("Parent");
+
+                    b.Navigation("RedirectTo");
                 });
 
             modelBuilder.Entity("VLibrary.Domain.Entities.DuplicateCandidateEntity", b =>
@@ -1262,13 +1221,6 @@ namespace VLibrary.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("VLibrary.Domain.Entities.AuthorInfoEntity", b =>
                 {
                     b.Navigation("BookAuthors");
-                });
-
-            modelBuilder.Entity("VLibrary.Domain.Entities.BookClasificatorEntity", b =>
-                {
-                    b.Navigation("Books");
-
-                    b.Navigation("Children");
                 });
 
             modelBuilder.Entity("VLibrary.Domain.Entities.BookEntity", b =>

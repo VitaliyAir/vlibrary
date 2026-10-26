@@ -37,11 +37,6 @@ namespace VLibrary.Infrastructure.Persistence.Configurations
             // Мягкое удаление (Global Query Filter)
             builder.HasQueryFilter(b => !b.IsDeleted);
 
-            builder.HasOne(b => b.BookClasificator)
-                   .WithMany(c => c.Books)
-                   .HasForeignKey(b => b.BookClasificatorId)
-                   .OnDelete(DeleteBehavior.SetNull);
-
             builder.HasMany(b => b.Tags)
                    .WithMany(t => t.Books)
                    .UsingEntity(j => j.ToTable("book_tags"));
@@ -103,21 +98,6 @@ namespace VLibrary.Infrastructure.Persistence.Configurations
             builder.Property(t => t.Name).IsRequired().HasMaxLength(100);
             builder.Property(t => t.NormalizedName).IsRequired().HasMaxLength(100);
             builder.HasIndex(t => t.NormalizedName).IsUnique();
-        }
-    }
-
-    internal sealed class BookClasificatorEntityConfiguration : IEntityTypeConfiguration<BookClasificatorEntity>
-    {
-        public void Configure(EntityTypeBuilder<BookClasificatorEntity> builder)
-        {
-            builder.ToTable("book_clasificators");
-            builder.HasKey(c => c.Id);
-            builder.Property(c => c.Title).IsRequired().HasMaxLength(250);
-
-            builder.HasOne(c => c.Parent)
-                   .WithMany(c => c.Children)
-                   .HasForeignKey(c => c.ParentId)
-                   .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

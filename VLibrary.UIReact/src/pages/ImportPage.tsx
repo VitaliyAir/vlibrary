@@ -69,6 +69,12 @@ function analyse(list: FileList, options: ImportOptions): Selection {
   return selection;
 }
 
+/** The start chip of a continued import: where the picked folders end in its source name (0 when not found). */
+function startFor(selection: Selection, sourceName: string): number {
+  const index = selection.commonFolders.findIndex((_, i) => selection.commonFolders.slice(i).join('/') === sourceName);
+  return index < 0 ? 0 : index;
+}
+
 /**
  * UC-1: pick a folder (or files) on this computer, choose where the category path starts and an optional parent
  * category, then the files are uploaded one by one: VLibrary -> VStorage, the library keeps the meta info.
@@ -90,6 +96,7 @@ export function ImportPage() {
   const [error, setError] = useState<unknown>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [stopped, setStopped] = useState(false);
+  const [resuming, setResuming] = useState<ImportBatch | null>(null);
 
   const batchId = useRef<number | null>(null);
   const queue = useRef<QueueItem[]>([]);
@@ -112,8 +119,10 @@ export function ImportPage() {
   const pick = (event: ChangeEvent<HTMLInputElement>) => {
     const list = event.target.files;
     if (list && list.length > 0 && options.data) {
-      setSelection(analyse(list, options.data));
-      setStart(0);
+      const picked = analyse(list, options.data);
+      setSelection(picked);
+      setStart(resuming ? startFor(picked, resuming.sourceName) : 0);
+      if (resuming) setParentId(resuming.parentCategoryId != null ? String(resuming.parentCategoryId) : '');
       setPhase('idle');
       setProgress(null);
       setError(null);
@@ -163,34 +172,61 @@ export function ImportPage() {
     await finish(await importApi.complete(id));
   };
 
+  const queueItems = (picked: Selection) =>
+    picked.files.map((p) => ({ relativePath: [...p.folders.slice(start), p.name].join('/'), file: p.file }));
+
+  /** Precheck (unchanged files are not uploaded again), then the rest one by one. */
+  const uploadAll = async (id: number, items: QueueItem[]) => {
+    batchId.current = id;
+    setSelectedId(id);
+    await changed();
+
+    // Unchanged files (same category, name, size and time) are not uploaded again.
+    const skip = new Set<string>();
+    for (let i = 0; i < items.length; i += PrecheckChunk) {
+      const chunk = items.slice(i, i + PrecheckChunk);
+      const result = await importApi.precheck(
+        id,
+        chunk.map((item) => ({ relativePath: item.relativePath, size: item.file.size, lastModified: item.file.lastModified })),
+      );
+      result.skip.forEach((path) => skip.add(path));
+      setProgress(result.batch);
+    }
+
+    queue.current = items.filter((item) => !skip.has(item.relativePath));
+    next.current = 0;
+    await runQueue();
+  };
+
   const startImport = async () => {
     if (!selection) return;
     setError(null);
     cancelRequested.current = false;
-    const items = selection.files.map((p) => ({ relativePath: [...p.folders.slice(start), p.name].join('/'), file: p.file }));
+    const items = queueItems(selection);
     const sourceName = targetFolders.join('/') || (selection.files.length === 1 ? selection.files[0].name : 'Selected files');
     try {
       setPhase('running');
       const created = await importApi.create({ sourceName, totalFiles: items.length, parentCategoryId: parent?.id ?? null });
-      batchId.current = created.id;
-      setSelectedId(created.id);
-      await changed();
+      await uploadAll(created.id, items);
+    } catch (e) {
+      setError(e);
+      setPhase(batchId.current == null ? 'idle' : 'finished');
+    }
+  };
 
-      // Unchanged files (same category, name, size and time) are not uploaded again.
-      const skip = new Set<string>();
-      for (let i = 0; i < items.length; i += PrecheckChunk) {
-        const chunk = items.slice(i, i + PrecheckChunk);
-        const result = await importApi.precheck(
-          created.id,
-          chunk.map((item) => ({ relativePath: item.relativePath, size: item.file.size, lastModified: item.file.lastModified })),
-        );
-        result.skip.forEach((path) => skip.add(path));
-        setProgress(result.batch);
-      }
-
-      queue.current = items.filter((item) => !skip.has(item.relativePath));
-      next.current = 0;
-      await runQueue();
+  /** Continues a stopped import with the same folder picked again: files it already handled are skipped. */
+  const continueImport = async () => {
+    if (!selection || !resuming) return;
+    setError(null);
+    cancelRequested.current = false;
+    batchId.current = null;
+    const items = queueItems(selection);
+    try {
+      setPhase('running');
+      const resumed = await importApi.resume(resuming.id, items.length);
+      setResuming(null);
+      setProgress(resumed);
+      await uploadAll(resumed.id, items);
     } catch (e) {
       setError(e);
       setPhase(batchId.current == null ? 'idle' : 'finished');
@@ -239,6 +275,26 @@ export function ImportPage() {
         </div>
         <ErrorMessage error={options.error ?? categories.error} />
 
+        {resuming && (
+          <p>
+            <strong>Continue import #{resuming.id}</strong>{' '}
+            <span className="path">
+              {resuming.parentCategoryPath ? `${resuming.parentCategoryPath} / ` : ''}
+              {resuming.sourceName}
+            </span>
+            : choose the same folder again. Files it already handled are skipped; failed files are tried again.{' '}
+            <button
+              className="link"
+              onClick={() => {
+                setResuming(null);
+                setSelection(null);
+              }}
+            >
+              Back to a new import
+            </button>
+          </p>
+        )}
+
         {selection && (
           <SelectionPreview
             selection={selection}
@@ -250,10 +306,24 @@ export function ImportPage() {
             target={[...(parent ? [parent.path] : []), ...targetFolders].join(' / ')}
             needsParent={needsParent}
             disabled={busy}
+            parentLocked={resuming != null}
           />
         )}
 
-        {selection && phase === 'idle' && (
+        {selection && phase === 'idle' && resuming && (
+          <>
+            {targetFolders.join('/') !== resuming.sourceName && (
+              <p className="warning-text">
+                Import #{resuming.id} started its categories at «{resuming.sourceName}»: check "Categories start at".
+              </p>
+            )}
+            <button className="primary" disabled={selection.files.length === 0 || needsParent} onClick={() => void continueImport()}>
+              Continue import #{resuming.id} ({selection.files.length} file(s))
+            </button>
+          </>
+        )}
+
+        {selection && phase === 'idle' && !resuming && (
           <button
             className="primary"
             disabled={selection.files.length === 0 || needsParent}
@@ -324,6 +394,23 @@ export function ImportPage() {
                 <Progress batch={batch} />
               </td>
               <td>
+                {!busy && (batch.status === 'Cancelled' || (batch.status === 'Running' && batch.id !== batchId.current)) && (
+                  <button
+                    className="small"
+                    title="Choose the same folder again; files this import already handled are skipped"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setResuming(batch);
+                      setSelection(null);
+                      setPhase('idle');
+                      setProgress(null);
+                      setError(null);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                  >
+                    Continue
+                  </button>
+                )}{' '}
                 {batch.status === 'Running' && batch.id !== batchId.current && (
                   <button
                     className="small"
@@ -358,6 +445,7 @@ function SelectionPreview(props: {
   target: string;
   needsParent: boolean;
   disabled: boolean;
+  parentLocked: boolean;
 }) {
   const { selection, start } = props;
   const size = useMemo(() => selection.files.reduce((sum, f) => sum + f.file.size, 0), [selection]);
@@ -404,7 +492,7 @@ function SelectionPreview(props: {
 
       <label className="row">
         Parent category
-        <select value={props.parentId} disabled={props.disabled} onChange={(e) => props.onParent(e.target.value)}>
+        <select value={props.parentId} disabled={props.disabled || props.parentLocked}onChange={(e) => props.onParent(e.target.value)}>
           <option value="">— top level —</option>
           {props.parentOptions.map((c) => (
             <option key={c.id} value={c.id}>
@@ -512,8 +600,12 @@ function ImportDetails({ id }: { id: number }) {
       </select>
       <table className="table">
         <tbody>
+          {/* An imported file has a message only when its category was created again (old folder of a deleted category). */}
           {items.items.map((item) => (
-            <tr key={item.id} className={warningOutcomes.includes(item.outcome) ? 'warning-row' : undefined}>
+            <tr
+              key={item.id}
+              className={warningOutcomes.includes(item.outcome) || (item.outcome === 'Imported' && item.message) ? 'warning-row' : undefined}
+            >
               <td>
                 <span className={`badge outcome-${item.outcome}`}>{outcomeLabels[item.outcome]}</span>
               </td>

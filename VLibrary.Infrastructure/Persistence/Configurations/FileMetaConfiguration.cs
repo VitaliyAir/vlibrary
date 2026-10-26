@@ -17,6 +17,7 @@ namespace VLibrary.Infrastructure.Persistence.Configurations
             builder.Property(f => f.Extension).IsRequired().HasMaxLength(10);
             builder.Property(f => f.FileHash).IsRequired().HasMaxLength(64).IsFixedLength();
             builder.Property(f => f.StorageKey).IsRequired().HasMaxLength(1024);
+            builder.Property(f => f.OriginalFileName).HasMaxLength(300); // same as FileName
             builder.Property(f => f.ContentTitleKey).HasMaxLength(500);
 
             builder.OwnsOne(f => f.ExtractedMetadata, metadata => metadata.ToJson("extracted_metadata"));
@@ -81,6 +82,12 @@ namespace VLibrary.Infrastructure.Persistence.Configurations
                    .WithMany(c => c.Children)
                    .HasForeignKey(c => c.ParentId)
                    .OnDelete(DeleteBehavior.Restrict);
+
+            // Redirect rows (old names) lead to the live category; deleting it leaves them "dead" (the handler does the same).
+            builder.HasOne(c => c.RedirectTo)
+                   .WithMany()
+                   .HasForeignKey(c => c.RedirectToId)
+                   .OnDelete(DeleteBehavior.SetNull);
         }
     }
 

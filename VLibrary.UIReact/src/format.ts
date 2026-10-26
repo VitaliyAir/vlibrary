@@ -1,4 +1,4 @@
-import type { BookFilesState, Category, ClassifierNode, ImportOutcome, ReadingStatus } from './api/types';
+import type { BookFilesState, Category, ImportOutcome, ReadingStatus } from './api/types';
 
 export const statusLabels: Record<ReadingStatus, string> = {
   NotStarted: 'Not started',
@@ -29,14 +29,6 @@ export const splitList = (text: string, separators: RegExp): string[] =>
     .split(separators)
     .map((s) => s.trim())
     .filter(Boolean);
-
-/** Classifier tree flattened for <select>, with indentation by depth. */
-export function flattenClassifiers(nodes: ClassifierNode[], depth = 0): { id: number; label: string }[] {
-  return nodes.flatMap((node) => [
-    { id: node.id, label: `${'  '.repeat(depth)}${node.title}` },
-    ...flattenClassifiers(node.children, depth + 1),
-  ]);
-}
 
 /** Categories (already ordered by path) for <select>, indented by depth. */
 export function categoryOptions(categories: Category[]): { id: number; label: string }[] {

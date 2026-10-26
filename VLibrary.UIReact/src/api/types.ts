@@ -28,6 +28,14 @@ export interface NamedRef {
   name: string;
 }
 
+/** An author of a book with the name parts (the author rows of the book card). */
+export interface BookAuthor extends NamedRef {
+  lastName: string | null;
+  firstName: string | null;
+  middleName: string | null;
+  initials: string | null;
+}
+
 export interface BookFile {
   id: number;
   fileName: string;
@@ -78,8 +86,7 @@ export interface BookDetails {
   lastOpenedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  classifier: NamedRef | null;
-  authors: NamedRef[];
+  authors: BookAuthor[];
   tags: NamedRef[];
   files: BookFile[];
   shelves: NamedRef[];
@@ -100,7 +107,6 @@ export interface BookFields {
   language?: Language | null;
   tableOfContents?: string | null;
   glossary?: string | null;
-  classifierId?: number | null;
   authors?: string[] | null;
   tags?: string[] | null;
 }
@@ -127,14 +133,6 @@ export interface Tag {
   id: number;
   name: string;
   booksCount: number;
-}
-
-export interface ClassifierNode {
-  id: number;
-  title: string;
-  parentId: number | null;
-  booksCount: number;
-  children: ClassifierNode[];
 }
 
 export interface Shelf {
@@ -204,6 +202,15 @@ export interface PrecheckResult {
   batch: ImportBatch;
 }
 
+export type CategoryRedirectState = 'Renamed' | 'Moved' | 'Merged';
+
+/** An old name and place of a category; imports from that folder go to the category. */
+export interface CategoryRedirect {
+  id: number;
+  path: string;
+  state: CategoryRedirectState;
+}
+
 export interface Category {
   id: number;
   name: string;
@@ -211,6 +218,27 @@ export interface Category {
   path: string;
   files: number;
   totalFiles: number;
+  redirects: CategoryRedirect[];
+}
+
+export interface BackupFile {
+  id: number;
+  categoryPath: string;
+  fileName: string;
+  sizeBytes: number;
+}
+
+export interface BackupManifest {
+  files: BackupFile[];
+  missing: number;
+}
+
+export interface CategoryChange {
+  categoryId: number;
+  path: string;
+  filesMoved: number;
+  merged: boolean;
+  missingInStorage: number;
 }
 
 export interface ImportItem {
@@ -287,17 +315,9 @@ export interface Reminder {
   authors: string[];
 }
 
-export interface ReadingRoomShelf {
-  id: number;
-  name: string;
-  booksCount: number;
-  books: BookListItem[];
-}
-
 export interface ReadingRoom {
   recentlyOpened: BookListItem[];
   inProgress: BookListItem[];
-  shelves: ReadingRoomShelf[];
 }
 
 export interface Settings {
@@ -334,4 +354,11 @@ export interface GenerateCoversResult {
 export interface LibraryCheckResult {
   filesOk: number;
   filesMissing: number;
+}
+
+export interface FileRenamed {
+  fileId: number;
+  fileName: string;
+  libraryPath: string;
+  missingInStorage: boolean;
 }

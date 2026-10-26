@@ -23,6 +23,7 @@ namespace VLibrary.Infrastructure.Storage
         ILogger<VStorageBookStorage> logger) : IBookStorage
     {
         private const int ListPageSize = 1000;
+        private const int RenameChunkSize = 1000;
         private const int MaxLoggedBody = 500;
 
         private static readonly Dictionary<string, string> ContentTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -43,6 +44,8 @@ namespace VLibrary.Infrastructure.Storage
         private sealed record ObjectListing(List<ObjectInfo> Objects, string? NextCursor);
 
         private sealed record DownloadLinkInfo(string Url, DateTimeOffset ExpiresAt);
+
+        private sealed record RenameInfo(int Renamed, int Unchanged, List<Guid> Missing);
 
         private string BucketCacheKey => $"vstorage-bucket:{currentUser.UserId}";
 
@@ -160,6 +163,53 @@ namespace VLibrary.Infrastructure.Storage
                 logger.LogError(exception, "VStorage delete of {ObjectId} failed", objectId);
                 return StorageErrors.Unavailable;
             }
+        }
+
+        public async Task<Result<StorageRenameResult>> RenameAsync(IReadOnlyList<StorageRename> renames, CancellationToken cancellationToken)
+        {
+            var access = await GetAccessAsync(cancellationToken);
+            if (access.IsFailure)
+            {
+                return access.Error;
+            }
+
+            var (token, bucketId) = access.Value;
+            var renamed = 0;
+            var missing = new List<Guid>();
+            try
+            {
+                foreach (var chunk in renames.Chunk(RenameChunkSize))
+                {
+                    using var request = CreateRequest(HttpMethod.Post, $"api/v1/buckets/{bucketId}/objects/rename", token);
+                    request.Content = JsonContent.Create(new { items = chunk.Select(r => new { objectId = r.ObjectId, key = r.Key }) });
+                    using var response = await http.SendAsync(request, cancellationToken);
+                    if (response.IsSuccessStatusCode && await response.Content.ReadFromJsonAsync<RenameInfo>(cancellationToken) is { } info)
+                    {
+                        renamed += info.Renamed;
+                        missing.AddRange(info.Missing);
+                        continue;
+                    }
+
+                    await LogFailureAsync("rename", $"{chunk.Length} object(s)", response, cancellationToken);
+                    switch (response.StatusCode)
+                    {
+                        case HttpStatusCode.Conflict:
+                            return StorageErrors.RenameConflict;
+                        case HttpStatusCode.NotFound:
+                            cache.Remove(BucketCacheKey);
+                            break;
+                    }
+
+                    return StorageErrors.Unavailable;
+                }
+            }
+            catch (Exception exception) when (IsTransport(exception, cancellationToken))
+            {
+                logger.LogError(exception, "VStorage rename of {Count} object(s) failed", renames.Count);
+                return StorageErrors.Unavailable;
+            }
+
+            return new StorageRenameResult(renamed, missing);
         }
 
         public async Task<Result<StorageDownloadLink>> CreateDownloadLinkAsync(Guid objectId, CancellationToken cancellationToken)
